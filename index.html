@@ -262,7 +262,31 @@
     .toolbar{ min-width:180px; }
     .toolbar-wrap:hover .toolbar{ min-width:280px; }
   }
+  /* --- TÍNH NĂNG MỚI: Cho phép kéo dãn phóng to/thu nhỏ Chat & Quests --- */
+.chat-container, .quests-container, #chat-box, #quest-box { 
+  resize: both !important;
+  overflow: auto !important;
+  min-width: 250px;
+  min-height: 200px;
+}
+
+/* --- TÍNH NĂNG MỚI: Toolbar cuộn ngang trên điện thoại không bị khuất Credit --- */
+@media screen and (max-width: 768px) {
+  .toolbar, #toolbar, nav {
+    display: flex !important;
+    flex-wrap: nowrap !important;
+    overflow-x: auto !important;
+    white-space: nowrap !important;
+    -webkit-overflow-scrolling: touch;
+  }
+  .toolbar::-webkit-scrollbar {
+    display: none; /* Ẩn thanh cuộn cho đẹp */
+  }
+}
 </style>
+  <!-- Thư viện Firebase Chat -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 </head>
 <body>
   <script>window.MAINTENANCE_MODE = false;</script>
@@ -884,6 +908,70 @@ if(window.MAINTENANCE_MODE){
   document.getElementById('maintenance').style.display='block';
 } else {
   resetOnly();
+}
+  // ==================== 1. CẤU HÌNH FIREBASE CHAT TỔNG ====================
+// (Nhớ thay đoạn firebaseConfig bên dưới bằng thông tin dự án của bạn từ Firebase Console nhé)
+const firebaseConfig = {
+  apiKey: "YOUR_API_KEY",
+  authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
+  databaseURL: "https://YOUR_PROJECT_ID-default-rtdb.firebaseio.com",
+  projectId: "YOUR_PROJECT_ID",
+  storageBucket: "YOUR_PROJECT_ID.appspot.com",
+  messagingSenderId: "YOUR_SENDER_ID",
+  appId: "YOUR_APP_ID"
+};
+
+if (typeof firebase !== 'undefined' && firebaseConfig.apiKey !== "YOUR_API_KEY") {
+  firebase.initializeApp(firebaseConfig);
+  const db = firebase.database();
+  const chatRef = db.ref("global_chat");
+
+  // Lắng nghe tin nhắn từ tất cả người dùng real-time
+  chatRef.limitToLast(50).on("child_added", (snapshot) => {
+    const msg = snapshot.val();
+    if (typeof displayMessage === 'function') {
+      displayMessage(msg.user, msg.text);
+    }
+  });
+}
+
+// ==================== 2. PHÍM ENTER DỪNG ĐẾM (STOP TIMER) ====================
+document.addEventListener("keydown", function(event) {
+  if (event.key === "Enter") {
+    // Không kích hoạt khi đang gõ chữ trong ô chat hoặc ô nhập quest
+    if (document.activeElement.tagName !== "INPUT" && document.activeElement.tagName !== "TEXTAREA") {
+      event.preventDefault();
+      if (typeof stopTimer === 'function') stopTimer();
+      else if (typeof pauseTimer === 'function') pauseTimer();
+      else if (typeof pause === 'function') pause();
+    }
+  }
+});
+
+// ==================== 3. DOUBLE CLICK / DOUBLE TAP ĐỂ STOP TIMER ====================
+const mainTimerBox = document.getElementById("timer") || document.querySelector(".timer") || document.getElementById("main-timer") || document.body;
+
+if (mainTimerBox) {
+  // Double click trên máy tính
+  mainTimerBox.addEventListener("dblclick", function() {
+    if (typeof stopTimer === 'function') stopTimer();
+    else if (typeof pauseTimer === 'function') pauseTimer();
+    else if (typeof pause === 'function') pause();
+  });
+
+  // Double tap trên điện thoại / tablet
+  let lastTapTime = 0;
+  mainTimerBox.addEventListener("touchend", function(e) {
+    const currentTime = new Date().getTime();
+    const tapLength = currentTime - lastTapTime;
+    if (tapLength < 300 && tapLength > 0) {
+      e.preventDefault();
+      if (typeof stopTimer === 'function') stopTimer();
+      else if (typeof pauseTimer === 'function') pauseTimer();
+      else if (typeof pause === 'function') pause();
+    }
+    lastTapTime = currentTime;
+  });
 }
 </script>
 </body>
