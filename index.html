@@ -272,16 +272,37 @@
 
 /* --- TÍNH NĂNG MỚI: Toolbar cuộn ngang trên điện thoại không bị khuất Credit --- */
 @media screen and (max-width: 768px) {
+  .toolbar-wrap, #toolbarWrap {
+    left: 0 !important;
+    transform: none !important;
+    width: 100vw !important;
+    max-width: 100vw !important;
+    padding: 0 10px !important;
+    box-sizing: border-box !important;
+  }
+  
   .toolbar, #toolbar, nav {
     display: flex !important;
     flex-wrap: nowrap !important;
     overflow-x: auto !important;
     white-space: nowrap !important;
-    -webkit-overflow-scrolling: touch;
+    -webkit-overflow-scrolling: touch !important;
+    justify-content: flex-start !important;
+    width: 100% !important;
+    max-width: 100% !important;
   }
+
   .toolbar::-webkit-scrollbar {
-    display: none; /* Ẩn thanh cuộn cho đẹp */
+    display: none !important;
   }
+}
+
+/* Cho phép kéo dãn phóng to/thu nhỏ khung Chat & Quests */
+#roomPanel, #questsPanel, .panel { 
+  resize: both !important;
+  overflow: auto !important;
+  min-width: 250px;
+  min-height: 200px;
 }
 </style>
   <!-- Thư viện Firebase Chat -->
@@ -971,6 +992,85 @@ if (mainTimerBox) {
       else if (typeof pause === 'function') pause();
     }
     lastTapTime = currentTime;
+  });
+}
+  // ==================== 1. TÍNH NĂNG CHAT TỔNG FIREBASE ====================
+// (Nhớ thay đoạn firebaseConfig bên dưới bằng thông tin dự án của bạn từ Firebase Console nhé)
+// Import the functions you need from the SDKs you need
+import { initializeApp } from "firebase/app";
+import { getAnalytics } from "firebase/analytics";
+// TODO: Add SDKs for Firebase products that you want to use
+// https://firebase.google.com/docs/web/setup#available-libraries
+
+// Your web app's Firebase configuration
+// For Firebase JS SDK v7.20.0 and later, measurementId is optional
+const firebaseConfig = {
+  apiKey: "AIzaSyBzCzlZ1lULgcnkkHojgNdTk41ctfwf30",
+  authDomain: "mytimer-c3981.firebaseapp.com",
+  projectId: "mytimer-c3981",
+  databaseURL: "https://mytimer-c3981-default-rtdb.firebaseio.com",
+  storageBucket: "mytimer-c3981.firebasestorage.app",
+  messagingSenderId: "523403355680",
+  appId: "1:523403355680:web:86d802499195caac13fe45",
+  measurementId: "G-3B2ZWPJE0F"
+};
+
+// Initialize Firebase
+if (typeof firebase !== 'undefined' && firebaseConfig.apiKey !== "YOUR_API_KEY") {
+  if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+  const db = firebase.database();
+  const chatRef = db.ref("global_chat");
+
+  // Lắng nghe tin nhắn mới từ mọi người dùng real-time
+  chatRef.limitToLast(50).on("child_added", (snapshot) => {
+    const data = snapshot.val();
+    if (data && data.text && typeof appendChatMessage === 'function') {
+      appendChatMessage(data.user || "Guest", data.text, false);
+    }
+  });
+
+  // Ghi đè hàm sendChat gốc để đẩy tin nhắn lên Firebase
+  window.sendChat = function() {
+    const input = document.getElementById("chatInput");
+    if (input && input.value.trim()) {
+      const val = input.value.trim();
+      const user = localStorage.getItem("chatUsername") || "User_" + Math.floor(Math.random() * 899 + 100);
+      chatRef.push({ user: user, text: val, timestamp: Date.now() });
+      input.value = "";
+    }
+  };
+}
+
+// ==================== 2. ENTER & DOUBLE TAP ĐỂ DỪNG ĐẾM (STOP TIMER) ====================
+// Phím Enter dừng đếm
+document.addEventListener("keydown", function(e) {
+  if (e.key === "Enter") {
+    if (document.activeElement.tagName === "INPUT" || document.activeElement.tagName === "TEXTAREA") {
+      return; // Không kích hoạt khi đang gõ chữ trong Chat / Quest
+    }
+    e.preventDefault();
+    if (typeof pause === 'function') pause();
+    else if (typeof stopTimer === 'function') stopTimer();
+  }
+});
+
+// Double Click (Máy tính) & Double Tap (Điện thoại) dừng đếm
+const timerDisplayEl = document.getElementById("clockContainer") || document.getElementById("timeDisplay") || document.body;
+if (timerDisplayEl) {
+  timerDisplayEl.addEventListener("dblclick", function() {
+    if (typeof pause === 'function') pause();
+    else if (typeof stopTimer === 'function') stopTimer();
+  });
+
+  let lastTapTime = 0;
+  timerDisplayEl.addEventListener("touchend", function(e) {
+    const now = new Date().getTime();
+    if (now - lastTapTime < 300 && now - lastTapTime > 0) {
+      e.preventDefault();
+      if (typeof pause === 'function') pause();
+      else if (typeof stopTimer === 'function') stopTimer();
+    }
+    lastTapTime = now;
   });
 }
 </script>
