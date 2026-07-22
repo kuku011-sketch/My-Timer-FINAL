@@ -271,14 +271,18 @@
 }
 
 /* --- TÍNH NĂNG MỚI: Toolbar cuộn ngang trên điện thoại không bị khuất Credit --- */
+/* --- TÍNH NĂNG MỚI: Toolbar cuộn mượt + Fix bị đè nút bấm + Stats Panel --- */
 @media screen and (max-width: 768px) {
-  .toolbar-wrap, #toolbarWrap {
-    left: 0 !important;
+  .toolbar-wrap, #toolbarWrap, div[class*="toolbar"] {
+    position: fixed !important;
+    bottom: 15px !important;
+    left: 10px !important;
+    right: 10px !important;
+    width: calc(100vw - 20px) !important;
+    max-width: calc(100vw - 20px) !important;
     transform: none !important;
-    width: 100vw !important;
-    max-width: 100vw !important;
-    padding: 0 10px !important;
-    box-sizing: border-box !important;
+    z-index: 999999 !important;
+    pointer-events: auto !important;
   }
   
   .toolbar, #toolbar, nav {
@@ -289,21 +293,40 @@
     -webkit-overflow-scrolling: touch !important;
     justify-content: flex-start !important;
     width: 100% !important;
-    max-width: 100% !important;
+    padding: 8px 12px !important;
+    box-sizing: border-box !important;
+    pointer-events: auto !important;
   }
 
   .toolbar::-webkit-scrollbar {
     display: none !important;
   }
+
+  /* Đẩy nút đổi Wallpaper lên cao để không đè chặn bấm Toolbar */
+  .wallpaper-toggle, #wallpaperBtn, div[onclick*="wallpaper"] {
+    z-index: 999990 !important;
+    bottom: 80px !important;
+  }
 }
 
-/* Cho phép kéo dãn phóng to/thu nhỏ khung Chat & Quests */
-#roomPanel, #questsPanel, .panel { 
+/* Cho phép kéo dãn phóng to/thu nhỏ Chat, Quests & Stats Panel */
+#roomPanel, #questsPanel, #statsPanel, .panel { 
   resize: both !important;
   overflow: auto !important;
-  min-width: 250px;
-  min-height: 200px;
+  min-width: 250px !important;
+  min-height: 200px !important;
 }
+
+/* Giao diện Bảng Tiến Độ & Lịch Sử Normal Mode */
+.stats-container { padding: 15px; font-family: var(--font-ui, sans-serif); color: var(--text, #e8e0d5); }
+.stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
+.stat-card { background: rgba(255,255,255,0.06); padding: 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.08); text-align: center; }
+.stat-value { font-size: 1.3rem; font-weight: bold; color: var(--accent, #d4a373); }
+.stat-label { font-size: 0.75rem; opacity: 0.7; margin-top: 2px; }
+.progress-bar-bg { background: rgba(255,255,255,0.1); height: 8px; border-radius: 4px; overflow: hidden; margin: 6px 0 12px 0; }
+.progress-bar-fill { background: var(--accent, #d4a373); height: 100%; width: 0%; transition: width 0.3s ease; }
+.history-list { max-height: 120px; overflow-y: auto; font-size: 0.8rem; }
+.history-item { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.05); }
 </style>
   <!-- Thư viện Firebase Chat -->
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
@@ -335,8 +358,35 @@
     <div id="sessionCount"></div>
 
     <button id="resetBtn">Reset</button>
+    <button class="btn" onclick="togglePanel('statsPanel')">📊 Tiến độ</button>
   </div>
-
+<!-- Khung Tiến Độ & Lịch Sử Normal Mode -->
+<div id="statsPanel" class="panel hidden" style="top:15%; left:10%; width:320px; height:380px; z-index:10000;">
+  <div class="panel-header">
+    <span class="panel-title">📊 TIẾN ĐỘ NORMAL MODE</span>
+    <button class="panel-close" onclick="togglePanel('statsPanel')">✕</button>
+  </div>
+  <div class="stats-container">
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div id="totalFocusTime" class="stat-value">0 phút</div>
+        <div class="stat-label">Tổng thời gian</div>
+      </div>
+      <div class="stat-card">
+        <div id="completedSessions" class="stat-value">0</div>
+        <div class="stat-label">Phiên hoàn thành</div>
+      </div>
+    </div>
+    <div style="font-size:0.8rem; margin-bottom:4px;">Mục tiêu hôm nay (60 phút):</div>
+    <div class="progress-bar-bg">
+      <div id="dailyProgressFill" class="progress-bar-fill"></div>
+    </div>
+    <div style="font-size:0.85rem; font-weight:600; margin: 12px 0 6px 0;">📜 Lịch sử gần đây:</div>
+    <div id="historyList" class="history-list">
+      <div style="opacity:0.5; text-align:center; padding:10px;">Chưa có lịch sử học</div>
+    </div>
+  </div>
+</div>
   <!-- Toolbar -->
   <div class="toolbar-wrap">
     <div class="toolbar" id="toolbar">
@@ -1073,6 +1123,120 @@ if (timerDisplayEl) {
     lastTapTime = now;
   });
 }
+// ==================== 1. THỐNG KÊ TIẾN ĐỘ & LỊCH SỬ (NORMAL MODE) ====================
+let stats = JSON.parse(localStorage.getItem('normalModeStats')) || {
+  totalSeconds: 0,
+  sessions: 0,
+  history: []
+};
+
+function updateStatsUI() {
+  const totalMins = Math.floor(stats.totalSeconds / 60);
+  const focusEl = document.getElementById('totalFocusTime');
+  const sessEl = document.getElementById('completedSessions');
+  const fillEl = document.getElementById('dailyProgressFill');
+  const listEl = document.getElementById('historyList');
+
+  if (focusEl) focusEl.textContent = totalMins + " phút";
+  if (sessEl) sessEl.textContent = stats.sessions;
+  
+  if (fillEl) {
+    const percent = Math.min(100, Math.round((totalMins / 60) * 100));
+    fillEl.style.width = percent + "%";
+  }
+
+  if (listEl && stats.history.length > 0) {
+    listEl.innerHTML = stats.history.map(item => `
+      <div class="history-item">
+        <span>⏱️ ${item.duration} phút (${item.mode || 'Normal'})</span>
+        <span style="opacity:0.6">${item.time}</span>
+      </div>
+    `).join('');
+  }
+}
+updateStatsUI();
+
+function recordSession(durationMinutes) {
+  stats.totalSeconds += durationMinutes * 60;
+  stats.sessions += 1;
+  const now = new Date();
+  const timeStr = now.getHours().toString().padStart(2,'0') + ":" + now.getMinutes().toString().padStart(2,'0');
+  stats.history.unshift({ duration: durationMinutes, time: timeStr, mode: 'Normal' });
+  if (stats.history.length > 10) stats.history.pop();
+  
+  localStorage.setItem('normalModeStats', JSON.stringify(stats));
+  updateStatsUI();
+}
+
+
+// ==================== 2. XỬ LÝ PHÍM SPACE (START), ENTER (PAUSE/RESUME) & CẢM ỨNG MOBILE ====================
+let isPausedState = false;
+
+function handleStartTimer() {
+  if (typeof start === 'function') start();
+  else if (typeof startTimer === 'function') startTimer();
+  isPausedState = false;
+}
+
+function handleTogglePause() {
+  if (!isPausedState) {
+    if (typeof pause === 'function') pause();
+    else if (typeof stopTimer === 'function') stopTimer();
+    isPausedState = true;
+  } else {
+    handleStartTimer();
+  }
+}
+
+// Máy tính: Space -> Bắt đầu đếm | Enter -> Tạm dừng / Đếm tiếp
+document.addEventListener("keydown", function(e) {
+  if (document.activeElement.tagName === "INPUT" || document.activeElement.tagName === "TEXTAREA") return;
+
+  if (e.code === "Space") {
+    e.preventDefault();
+    handleStartTimer();
+  } else if (e.code === "Enter") {
+    e.preventDefault();
+    handleTogglePause();
+  }
+});
+
+// Điện thoại / Click: Click 1 lần -> Bắt đầu đếm | Double-tap -> Tạm dừng / Đếm tiếp
+const clockBox = document.getElementById("clockContainer") || document.getElementById("timeDisplay") || document.querySelector(".timer-box") || document.body;
+
+if (clockBox) {
+  let tapTimer = null;
+  let tapCount = 0;
+
+  clockBox.addEventListener("click", function(e) {
+    if (e.target.tagName === "BUTTON" || e.target.tagName === "INPUT" || e.target.closest('.panel') || e.target.closest('.toolbar-wrap')) return;
+
+    tapCount++;
+    if (tapCount === 1) {
+      tapTimer = setTimeout(() => {
+        handleStartTimer();
+        tapCount = 0;
+      }, 300);
+    } else if (tapCount === 2) {
+      clearTimeout(tapTimer);
+      handleTogglePause();
+      tapCount = 0;
+    }
+  });
+}
+
+
+// ==================== 3. CẬP NHẬT CREDIT ====================
+function updateCreditText() {
+  const creditEl = document.querySelector("#creditPanel, .credit-content, #creditModal") || document.body;
+  if (creditEl) {
+    creditEl.innerHTML = creditEl.innerHTML.replace(
+      /Code:\s*Clau\s*\(Claude\)/gi, 
+      "Code: Clau (Claude) & Mini (Gemini)"
+    );
+  }
+}
+setTimeout(updateCreditText, 1000);
 </script>
 </body>
 </html>
